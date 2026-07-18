@@ -23,6 +23,12 @@ canvas { display:block; }
   width:100%; padding:12px; border-radius:6px; border:1px solid #333c4a;
   background:#11151c; color:#fff; font-size:15px; margin-bottom:15px; outline:none;
 }
+#mapSelect {
+  width:100%; padding:11px; border-radius:6px; border:1px solid #333c4a;
+  background:#11151c; color:#fff; font-size:14px; margin-bottom:8px; outline:none; cursor:pointer;
+}
+.map-note { color:#5c6576; font-size:11px; margin-bottom:15px; text-align:left; }
+
 #playBtn {
   width:100%; padding:14px; border:none; border-radius:6px;
   background:#ff8c00; color:#101010; font-weight:bold; font-size:16px;

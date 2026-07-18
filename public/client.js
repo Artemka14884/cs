@@ -114,11 +114,239 @@ function buildTrainingMap() {
   for (let i = 0; i < 5; i++) {
     addBox(3, 1, 3, 40, 0.5 + i * 1, -20 + i * 3, matBox);
   }
-}
-buildTrainingMap();
 
-// Пересчёт box3 коллайдеров один раз после постройки карты
-colliders.forEach(c => c.box3.setFromObject(c.mesh));
+  // ---- Дополнительные объекты для тренировки (бочки, ящики разных форм) ----
+  addBarrel(15, 1, -20);
+  addBarrel(15.8, 1, -19.3);
+  addBarrel(-15, 1, -20);
+  addCrateStack(25, 0, 0, 3);
+  addCrateStack(-25, 0, 0, 2);
+  addCrateStack(0, 0, -45, 4);
+  addBox(6, 0.15, 6, 25, 0.08, 20, matMetal, false); // плита-платформа
+  addBarrel(25, 1, 20.5);
+  addBarrel(-8, 1, -8.5);
+}
+
+// ---------- Переиспользуемые объекты-пропы ----------
+function addBarrel(x, y, z) {
+  const geo = new THREE.CylinderGeometry(0.5, 0.5, 1.1, 16);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a3b2b, roughness: 0.6, metalness: 0.3 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  const box3 = new THREE.Box3().setFromObject(mesh);
+  colliders.push({ mesh, box3 });
+  return mesh;
+}
+
+function addCrateStack(cx, cy, cz, count) {
+  const positions = [
+    [0, 0, 0], [1.1, 0, 0], [0.55, 1.1, 0], [0, 0, 1.1], [1.1, 0, 1.1]
+  ];
+  for (let i = 0; i < Math.min(count, positions.length); i++) {
+    const [dx, dy, dz] = positions[i];
+    addBox(1, 1, 1, cx + dx, cy + 0.5 + dy, cz + dz, matBox);
+  }
+}
+
+// Карта строится после получения ответа от сервера (см. socket.on('init', ...) ниже),
+// чтобы все игроки сессии видели одну и ту же карту.
+function buildMap(mapId) {
+  if (mapId === 'bazaar') {
+    buildDesertBazaarMap();
+  } else {
+    buildTrainingMap();
+  }
+  colliders.forEach(c => c.box3.setFromObject(c.mesh));
+}
+
+// ---------- Пустынный рынок (оригинальная карта в духе ближневосточного города,
+// вдохновлена общей эстетикой пустынных карт жанра — не копия конкретного
+// официального левел-дизайна) ----------
+function buildDesertBazaarMap() {
+  const matSand = new THREE.MeshStandardMaterial({ color: 0xd9b877, roughness: 0.95 });
+  const matSandstone = new THREE.MeshStandardMaterial({ color: 0xc9a06a, roughness: 0.85 });
+  const matSandstoneDark = new THREE.MeshStandardMaterial({ color: 0xa67e4d, roughness: 0.85 });
+  const matWood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.8 });
+  const matCloth = new THREE.MeshStandardMaterial({ color: 0xb3402f, roughness: 0.9 });
+  const matClothBlue = new THREE.MeshStandardMaterial({ color: 0x2f6fb3, roughness: 0.9 });
+  const matPalm = new THREE.MeshStandardMaterial({ color: 0x3c6b34, roughness: 0.8 });
+  const matTrunk = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
+
+  scene.background = new THREE.Color(0xe8c98a);
+  scene.fog = new THREE.Fog(0xe8c98a, 45, 150);
+  hemi.color.set(0xfff3d0);
+  hemi.groundColor.set(0xc9a06a);
+  sun.color.set(0xffe3ad);
+  sun.intensity = 1.3;
+
+  // Песчаный пол
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), matSand);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Внешние границы города
+  addBox(150, 10, 1, 0, 5, -75, matSandstoneDark);
+  addBox(150, 10, 1, 0, 5, 75, matSandstoneDark);
+  addBox(1, 10, 150, -75, 5, 0, matSandstoneDark);
+  addBox(1, 10, 150, 75, 5, 0, matSandstoneDark);
+
+  // ---- Здание А (юго-западный квартал, "точка А") ----
+  function building(x, z, w, d, h, mat, doorGapX = null) {
+    const wallH = h;
+    addBox(w, wallH, 0.5, x, wallH / 2, z - d / 2, mat); // задняя стена
+    addBox(0.5, wallH, d, x - w / 2, wallH / 2, z, mat);  // левая
+    addBox(0.5, wallH, d, x + w / 2, wallH / 2, z, mat);  // правая
+    if (doorGapX === null) {
+      addBox(w, wallH, 0.5, x, wallH / 2, z + d / 2, mat); // передняя (без прохода)
+    } else {
+      const gap = 2.2;
+      addBox((w - gap) / 2, wallH, 0.5, x - gap / 2 - (w - gap) / 4, wallH / 2, z + d / 2, mat);
+      addBox((w - gap) / 2, wallH, 0.5, x + gap / 2 + (w - gap) / 4, wallH / 2, z + d / 2, mat);
+    }
+    addBox(w + 0.6, 0.4, d + 0.6, x, h + 0.2, z, matSandstoneDark); // крыша
+  }
+
+  building(-30, -35, 14, 12, 6, matSandstone, 0);
+  building(-30, 35, 14, 12, 6, matSandstone, 0);
+  building(30, -35, 14, 12, 6, matSandstone, 0);
+  building(30, 35, 14, 12, 6, matSandstone, 0);
+
+  // Арки-проходы между зданиями (характерный элемент ближневосточной архитектуры)
+  function archway(x, z, rotY) {
+    const g = new THREE.Group();
+    const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.6, 4, 0.6), matSandstone);
+    pillarL.position.set(-1.5, 2, 0);
+    const pillarR = pillarL.clone();
+    pillarR.position.set(1.5, 2, 0);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.6, 0.6), matSandstone);
+    top.position.set(0, 4, 0);
+    g.add(pillarL, pillarR, top);
+    g.position.set(x, 0, z);
+    g.rotation.y = rotY;
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(g);
+    [pillarL, pillarR].forEach(p => {
+      const worldPos = p.getWorldPosition(new THREE.Vector3());
+      const box3 = new THREE.Box3().setFromObject(p);
+      colliders.push({ mesh: p, box3 });
+    });
+  }
+  archway(0, -35, 0);
+  archway(0, 35, 0);
+
+  // ---- Средний коридор (mid) с длинной стеной-прикрытием ----
+  addBox(1, 3, 40, -3, 1.5, 0, matSandstone);
+  addBox(1, 3, 40, 3, 1.5, 0, matSandstoneDark);
+  for (let i = -1; i <= 1; i += 2) {
+    addBox(2, 1.2, 2, i * 3, 0.6, 15, matSandstone);
+    addBox(2, 1.2, 2, i * 3, 0.6, -15, matSandstone);
+  }
+
+  // ---- Рыночная площадь в центре с прилавками и навесами ----
+  function marketStall(x, z, clothMat) {
+    const g = new THREE.Group();
+    const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 2.2, 8);
+    const positions = [[-1.2, -0.8], [1.2, -0.8], [-1.2, 0.8], [1.2, 0.8]];
+    positions.forEach(([px, pz]) => {
+      const pole = new THREE.Mesh(poleGeo, matWood);
+      pole.position.set(px, 1.1, pz);
+      pole.castShadow = true;
+      g.add(pole);
+    });
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.1, 2, 1), clothMat);
+    roof.position.set(0, 2.25, 0);
+    roof.castShadow = true;
+    g.add(roof);
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 1.6), matWood);
+    counter.position.set(0, 0.45, 0);
+    counter.castShadow = true;
+    counter.receiveShadow = true;
+    g.add(counter);
+    g.position.set(x, 0, z);
+    scene.add(g);
+    const box3 = new THREE.Box3().setFromObject(counter);
+    colliders.push({ mesh: counter, box3 });
+    return g;
+  }
+  marketStall(-8, 5, matCloth);
+  marketStall(8, 5, matClothBlue);
+  marketStall(-8, -5, matClothBlue);
+  marketStall(8, -5, matCloth);
+
+  // Ящики и бочки, разбросанные по рынку (прикрытия для перестрелок)
+  addCrateStackDesert(0, 0, 10, 3, matWood);
+  addCrateStackDesert(14, 0, 0, 2, matWood);
+  addCrateStackDesert(-14, 0, 0, 4, matWood);
+  addBarrelDesert(3, 1, 2);
+  addBarrelDesert(-3, 1, -2);
+  addBarrelDesert(18, 1, 18);
+  addBarrelDesert(-18, 1, -18);
+  addBarrelDesert(18, 1, -18);
+  addBarrelDesert(-18, 1, 18);
+
+  // Пальмы для атмосферы
+  function palm(x, z) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, 3.2, 8), matTrunk);
+    trunk.position.set(x, 1.6, z);
+    trunk.rotation.z = 0.08;
+    trunk.castShadow = true;
+    scene.add(trunk);
+    for (let i = 0; i < 6; i++) {
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.25, 2.2, 4), matPalm);
+      leaf.position.set(x, 3.1, z);
+      leaf.rotation.z = Math.PI / 2.4;
+      leaf.rotation.y = (i / 6) * Math.PI * 2;
+      leaf.castShadow = true;
+      scene.add(leaf);
+    }
+  }
+  palm(22, 4); palm(-22, -4); palm(4, 22); palm(-4, -22); palm(0, 55); palm(0, -55);
+
+  // Высокие сторожевые башни по углам (визуальные ориентиры)
+  [[-55, -55], [55, -55], [-55, 55], [55, 55]].forEach(([x, z]) => {
+    addBox(4, 9, 4, x, 4.5, z, matSandstoneDark);
+    addBox(4.6, 0.4, 4.6, x, 9.2, z, matSandstone);
+  });
+
+  // Дальняя зона для баннихопа — те же рампы, что и на тренировочной, но в песочной тематике
+  const bhopZ = 60;
+  const rampCount = 6;
+  for (let i = 0; i < rampCount; i++) {
+    const x = -18 + i * 7;
+    const height = 1 + i * 0.6;
+    addBox(4, 0.5, 4, x, height, bhopZ, matSandstone);
+    if (i < rampCount - 1) {
+      const rampMesh = addBox(4, 0.4, 4.2, x + 3.5, height + 0.4, bhopZ, matSandstone);
+      rampMesh.rotation.x = -0.35;
+    }
+  }
+}
+
+function addBarrelDesert(x, y, z) {
+  const geo = new THREE.CylinderGeometry(0.5, 0.5, 1.1, 16);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x6b5a3b, roughness: 0.7, metalness: 0.2 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  const box3 = new THREE.Box3().setFromObject(mesh);
+  colliders.push({ mesh, box3 });
+}
+
+function addCrateStackDesert(cx, cy, cz, count, mat) {
+  const positions = [
+    [0, 0, 0], [1.1, 0, 0], [0.55, 1.1, 0], [0, 0, 1.1], [1.1, 0, 1.1]
+  ];
+  for (let i = 0; i < Math.min(count, positions.length); i++) {
+    const [dx, dy, dz] = positions[i];
+    addBox(1, 1, 1, cx + dx, cy + 0.5 + dy, cz + dz, mat);
+  }
+}
 
 // ---------- AK-47 (процедурная модель, не текстуры из игр) ----------
 function buildAK47() {
@@ -223,7 +451,7 @@ const player = {
   health: 100,
   alive: true,
   ammo: 30,
-  reserve: 90,
+  reserve: Infinity, // бесконечные патроны
   reloading: false,
   jumpQueued: false
 };
@@ -280,9 +508,10 @@ function requestLock() { canvas.requestPointerLock(); }
 
 document.getElementById('playBtn').addEventListener('click', () => {
   const name = document.getElementById('nameInput').value || 'Player';
+  const mapId = document.getElementById('mapSelect').value;
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
-  socket.emit('join', { name });
+  socket.emit('join', { name, mapId });
   requestLock();
 });
 
@@ -380,13 +609,11 @@ const raycaster = new THREE.Raycaster();
 const otherPlayerMeshes = {}; // id -> group (для попаданий)
 
 function startReload() {
-  if (player.reloading || player.ammo === 30 || player.reserve === 0) return;
+  // Бесконечные патроны: перезарядка мгновенно заполняет магазин, резерв не тратится
+  if (player.reloading || player.ammo === 30) return;
   player.reloading = true;
   setTimeout(() => {
-    const needed = 30 - player.ammo;
-    const take = Math.min(needed, player.reserve);
-    player.ammo += take;
-    player.reserve -= take;
+    player.ammo = 30;
     player.reloading = false;
     updateAmmoHUD();
   }, 1600);
@@ -398,7 +625,7 @@ function shoot() {
   if (now - lastFireTime < RATE_OF_FIRE) return;
   if (player.ammo <= 0) { startReload(); return; }
   lastFireTime = now;
-  player.ammo--;
+  player.ammo--; // магазин по-прежнему ограничен на 30, но резерв бесконечен — патроны никогда не заканчиваются насовсем
   updateAmmoHUD();
 
   fireRecoilKick();
@@ -594,6 +821,7 @@ let myId = null;
 
 socket.on('init', (data) => {
   myId = data.id;
+  buildMap(data.mapId || 'training');
   Object.values(data.players).forEach(p => {
     if (p.id !== myId) spawnRemotePlayer(p);
   });
@@ -688,7 +916,7 @@ function updateHealthHUD() {
   document.getElementById('healthValue').textContent = Math.max(0, Math.round(player.health));
 }
 function updateAmmoHUD() {
-  document.getElementById('ammoValue').textContent = `${player.ammo} / ${player.reserve}`;
+  document.getElementById('ammoValue').textContent = `${player.ammo} / ∞`;
 }
 function addKillfeed(killer, victim) {
   const feed = document.getElementById('killfeed');

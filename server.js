@@ -15,6 +15,7 @@ const PORT = process.env.PORT || 3000;
 
 // ---- Игровое состояние ----
 const players = {}; // id -> {id, name, pos, rot, health, kills, deaths, weapon}
+let currentMapId = null; // карту сессии задаёт первый подключившийся игрок
 
 const SPAWN_POINTS = [
   { x: 0, y: 2, z: 0 },
@@ -35,6 +36,11 @@ io.on('connection', (socket) => {
   console.log('connected:', socket.id);
 
   socket.on('join', (data) => {
+    // Первый игрок сессии определяет карту; остальные подключаются к уже выбранной
+    if (!currentMapId) {
+      currentMapId = (data && data.mapId) ? String(data.mapId) : 'training';
+    }
+
     const spawn = randomSpawn();
     players[socket.id] = {
       id: socket.id,
@@ -49,7 +55,8 @@ io.on('connection', (socket) => {
 
     socket.emit('init', {
       id: socket.id,
-      players
+      players,
+      mapId: currentMapId
     });
 
     socket.broadcast.emit('playerJoined', players[socket.id]);
@@ -122,6 +129,9 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     delete players[socket.id];
     io.emit('playerLeft', { id: socket.id });
+    if (Object.keys(players).length === 0) {
+      currentMapId = null; // сессия опустела — следующий вошедший снова выбирает карту
+    }
     console.log('disconnected:', socket.id);
   });
 });
