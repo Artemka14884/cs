@@ -1,11 +1,17 @@
+# render.yaml — конфигурация деплоя для Render.com
+# Render автоматически найдёт этот файл в корне репозитория и создаст сервис.
+# Документация: https://render.com/docs/blueprint-spec
+
 services:
   - type: web
-    name: arena-fps-online
-    runtime: node
-    plan: free
+    name: tactical-shooter-prototype
+    env: node
+    plan: free          # можно сменить на starter/standard для лучшего пинга и аптайма
+    region: frankfurt    # выберите ближайший к вашим друзьям регион (frankfurt/oregon/singapore/ohio)
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
-        value: 20.11.0
-    autoDeploy: true
+        value: 18.20.0
+    # PORT Render подставляет автоматически в process.env.PORT — ничего указывать не нужно
+    healthCheckPath: /health

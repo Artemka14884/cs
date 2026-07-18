@@ -1,78 +1,962 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arena FPS Online — тренировочная карта</title>
-<link rel="stylesheet" href="style.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>TACTICAL // прототип FPS-шутера</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0b0d0e;
+    --panel: #14181a;
+    --line: #262c2f;
+    --amber: #ff9d2e;
+    --amber-dim: #8a5a1e;
+    --red: #ff3b3b;
+    --blue: #4fa3ff;
+    --green: #4dd48a;
+    --text: #e7e9ea;
+    --text-dim: #8b9598;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--bg); color:var(--text);
+    font-family:'Rajdhani',sans-serif;}
+  #gameCanvas{position:fixed;top:0;left:0;width:100%;height:100%;display:block;outline:none;}
+
+  /* ---------- ЭКРАН ВХОДА (ЛОГИН) ---------- */
+  #loginScreen{
+    position:fixed;inset:0;z-index:50;
+    display:flex;align-items:center;justify-content:center;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(255,157,46,0.08), transparent 45%),
+      linear-gradient(180deg, #0b0d0e 0%, #101314 100%);
+  }
+  .login-card{
+    width:420px;max-width:92vw;
+    background:var(--panel); border:1px solid var(--line);
+    padding:32px 30px 26px;
+    position:relative;
+  }
+  .login-card::before{
+    content:"";position:absolute;top:0;left:0;width:100%;height:3px;
+    background:linear-gradient(90deg, var(--amber), transparent 70%);
+  }
+  .brand-eyebrow{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:3px;color:var(--amber);text-transform:uppercase;}
+  .brand-title{font-size:34px;font-weight:700;letter-spacing:1px;margin:6px 0 2px;}
+  .brand-sub{color:var(--text-dim);font-size:13px;margin-bottom:22px;}
+  #nameInput{
+    width:100%;padding:12px 14px;font-size:16px;font-family:'Rajdhani',sans-serif;font-weight:600;
+    background:#0d0f10;border:1px solid var(--line);color:var(--text);
+    outline:none;letter-spacing:0.5px;
+  }
+  #nameInput:focus{border-color:var(--amber);}
+  .map-select{display:flex;gap:8px;margin:14px 0;}
+  .map-chip{flex:1;padding:8px 6px;text-align:center;border:1px solid var(--line);font-size:12px;
+    font-family:'Share Tech Mono',monospace;color:var(--text-dim);cursor:pointer;letter-spacing:1px;}
+  .map-chip.active{border-color:var(--amber);color:var(--amber);}
+  #playBtn{
+    width:100%;margin-top:16px;padding:14px;font-size:16px;font-weight:700;letter-spacing:2px;
+    background:var(--amber);color:#1a1200;border:none;cursor:pointer;text-transform:uppercase;
+    font-family:'Rajdhani',sans-serif;
+  }
+  #playBtn:hover{background:#ffb04d;}
+  #playBtn:disabled{background:#4a3a22;color:#8a7654;cursor:not-allowed;}
+  .conn-status{margin-top:12px;font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--text-dim);}
+  .conn-status.ok{color:var(--green);}
+  .conn-status.bad{color:var(--red);}
+
+  /* лобби-чат внутри экрана входа */
+  #lobbyChatWrap{margin-top:20px;border-top:1px solid var(--line);padding-top:14px;}
+  #lobbyChatLog{height:120px;overflow-y:auto;font-size:13px;font-family:'Share Tech Mono',monospace;
+    color:var(--text-dim);margin-bottom:8px;padding-right:4px;}
+  #lobbyChatLog .msg{margin-bottom:4px;}
+  #lobbyChatLog .name{color:var(--amber);}
+  #lobbyChatInput{width:100%;padding:8px 10px;background:#0d0f10;border:1px solid var(--line);
+    color:var(--text);font-family:'Share Tech Mono',monospace;font-size:13px;outline:none;}
+  #lobbyChatInput:focus{border-color:var(--amber);}
+
+  /* ---------- HUD ВО ВРЕМЯ ИГРЫ ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:20;display:none;font-family:'Share Tech Mono',monospace;}
+  #crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;}
+  #crosshair::before,#crosshair::after{content:"";position:absolute;background:var(--amber);}
+  #crosshair::before{left:9px;top:0;width:2px;height:20px;}
+  #crosshair::after{top:9px;left:0;height:2px;width:20px;}
+
+  #topBar{position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;}
+  #timer{font-size:22px;letter-spacing:2px;background:rgba(10,12,13,0.7);border:1px solid var(--line);padding:6px 16px;}
+  #mapLabel{font-size:12px;color:var(--text-dim);background:rgba(10,12,13,0.7);border:1px solid var(--line);padding:6px 12px;letter-spacing:1px;}
+
+  #bottomLeft{position:absolute;bottom:18px;left:18px;}
+  #healthWrap{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  #healthBarOuter{width:180px;height:14px;background:rgba(255,255,255,0.08);border:1px solid var(--line);}
+  #healthBarInner{height:100%;background:var(--green);width:100%;transition:width 0.15s;}
+  #healthNum{font-size:20px;font-weight:700;}
+
+  #bottomRight{position:absolute;bottom:18px;right:18px;text-align:right;}
+  #weaponName{font-size:18px;color:var(--amber);letter-spacing:2px;}
+  #ammoNum{font-size:34px;font-weight:700;line-height:1;}
+  #weaponSlots{display:flex;gap:6px;margin-top:8px;justify-content:flex-end;}
+  .slot{width:34px;height:34px;border:1px solid var(--line);background:rgba(10,12,13,0.7);
+    display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text-dim);}
+  .slot.active{border-color:var(--amber);color:var(--amber);}
+
+  #killFeed{position:absolute;top:70px;right:18px;text-align:right;font-size:13px;color:var(--text-dim);}
+  #killFeed div{background:rgba(10,12,13,0.6);margin-bottom:4px;padding:4px 10px;border-left:2px solid var(--amber);}
+
+  #scoreboard{position:absolute;top:16px;left:16px;font-size:12px;background:rgba(10,12,13,0.75);
+    border:1px solid var(--line);padding:8px 12px;min-width:150px;}
+  #scoreboard .row{display:flex;justify-content:space-between;gap:10px;color:var(--text-dim);padding:1px 0;}
+  #scoreboard .row.me{color:var(--amber);}
+
+  #deathOverlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
+    background:rgba(20,0,0,0.35);}
+  #deathOverlay .txt{font-size:40px;color:var(--red);letter-spacing:4px;font-weight:700;}
+  #deathOverlay .sub{color:var(--text-dim);margin-top:8px;font-family:'Share Tech Mono',monospace;}
+
+  #centerHint{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);color:var(--text-dim);
+    font-size:12px;background:rgba(10,12,13,0.6);padding:5px 12px;letter-spacing:1px;}
+
+  /* игровой чат поверх HUD */
+  #gameChatWrap{position:absolute;bottom:120px;left:18px;width:340px;pointer-events:auto;}
+  #gameChatLog{max-height:150px;overflow-y:auto;font-size:13px;margin-bottom:6px;
+    text-shadow:0 1px 3px rgba(0,0,0,0.9);}
+  #gameChatLog .msg{margin-bottom:3px;color:#dfe3e4;}
+  #gameChatLog .name{color:var(--amber);}
+  #gameChatInput{width:100%;padding:7px 10px;background:rgba(10,12,13,0.75);border:1px solid var(--line);
+    color:var(--text);font-family:'Share Tech Mono',monospace;font-size:13px;outline:none;display:none;}
+  #gameChatInput:focus{border-color:var(--amber);}
+
+  ::-webkit-scrollbar{width:6px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);}
+</style>
 </head>
 <body>
 
-<div id="menu">
-  <div class="menu-box">
-    <h1>ARENA FPS <span>online</span></h1>
-    <p class="subtitle">3D-шутер · AK-47 · реальная отдача · баннихоп · мультиплеер</p>
-    <input id="nameInput" type="text" maxlength="16" placeholder="Ваш никнейм" value="Player">
-    <select id="mapSelect">
-      <option value="training">Тренировочная арена</option>
-      <option value="bazaar">Пустынный рынок (в стиле Mirage)</option>
-    </select>
-    <div class="map-note">Карту задаёт первый игрок в сессии — остальные подключаются к той же</div>
-    <button id="playBtn">ИГРАТЬ</button>
-    <div class="hints">
-      <b>Управление:</b><br>
-      WASD — движение &nbsp;|&nbsp; Мышь — обзор &nbsp;|&nbsp; ЛКМ — стрельба<br>
-      ПРОБЕЛ — прыжок (жми в момент приземления для баннихопа) &nbsp;|&nbsp; R — перезарядка<br>
-      SHIFT — бег &nbsp;|&nbsp; Esc — меню
+<canvas id="gameCanvas"></canvas>
+
+<!-- ==================== ЭКРАН ВХОДА ==================== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="brand-eyebrow">// PROTOTYPE BUILD</div>
+    <div class="brand-title">TACTICAL</div>
+    <div class="brand-sub">Мультиплеерный FPS-прототип — Node.js · WebSocket · Three.js</div>
+
+    <input id="nameInput" type="text" maxlength="16" placeholder="Введите позывной (никнейм)" />
+
+    <button id="playBtn" disabled>Играть</button>
+    <div class="conn-status" id="connStatus">Подключение к серверу...</div>
+
+    <div id="lobbyChatWrap">
+      <div class="brand-eyebrow" style="margin-bottom:8px;">Чат лобби</div>
+      <div id="lobbyChatLog"></div>
+      <input id="lobbyChatInput" type="text" maxlength="200" placeholder="Написать в чат и нажать Enter..." />
     </div>
   </div>
 </div>
 
-<div id="hud" class="hidden">
-  <div id="crosshair">
-    <div class="ch-line ch-top"></div>
-    <div class="ch-line ch-bottom"></div>
-    <div class="ch-line ch-left"></div>
-    <div class="ch-line ch-right"></div>
+<!-- ==================== HUD ВО ВРЕМЯ МАТЧА ==================== -->
+<div id="hud">
+  <div id="crosshair"></div>
+
+  <div id="topBar">
+    <div id="timer">05:00</div>
+    <div id="mapLabel">—</div>
   </div>
 
-  <div id="healthBar">
-    <div class="stat-icon">❤</div>
-    <div id="healthValue">100</div>
+  <div id="scoreboard"></div>
+  <div id="killFeed"></div>
+
+  <div id="bottomLeft">
+    <div id="healthWrap">
+      <div id="healthBarOuter"><div id="healthBarInner"></div></div>
+      <div id="healthNum">100</div>
+    </div>
   </div>
 
-  <div id="ammoBar">
-    <div id="ammoValue">30 / 90</div>
-    <div class="stat-icon">AK-47</div>
+  <div id="bottomRight">
+    <div id="weaponName">АВТОМАТ</div>
+    <div id="ammoNum">30</div>
+    <div id="weaponSlots">
+      <div class="slot" data-slot="1">1</div>
+      <div class="slot" data-slot="2">2</div>
+      <div class="slot" data-slot="3">3</div>
+      <div class="slot" data-slot="4">4</div>
+      <div class="slot" data-slot="5">5</div>
+    </div>
   </div>
 
-  <div id="speedBar">Скорость: <span id="speedValue">0</span></div>
+  <div id="centerHint">WASD — движение · ЛКМ — огонь/бросок · R — перезарядка · 1-5 — оружие/гранаты · Enter — чат · Esc — курсор</div>
 
-  <div id="killfeed"></div>
-
-  <div id="scoreboard" class="hidden"></div>
-
-  <div id="chatBox">
-    <div id="chatMessages"></div>
-    <input id="chatInput" type="text" maxlength="200" placeholder="Нажми T чтобы написать...">
+  <div id="gameChatWrap">
+    <div id="gameChatLog"></div>
+    <input id="gameChatInput" type="text" maxlength="200" placeholder="Сообщение..." />
   </div>
 
-  <div id="deathScreen" class="hidden">
-    <div>ВАС УБИЛИ</div>
-    <div class="respawn-text">Возрождение через <span id="respawnTimer">3</span>...</div>
+  <div id="deathOverlay">
+    <div class="txt">ВЫ ПОГИБЛИ</div>
+    <div class="sub" id="deathSub">Респавн через 3с...</div>
   </div>
 </div>
 
-<div id="crosshairLockHint" class="hidden">Кликните, чтобы захватить курсор</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
   }
 }
 </script>
-<script type="module" src="client.js"></script>
+<script type="module">
+import * as THREE from "three";
+
+/* ======================================================================
+ *  КЛИЕНТСКАЯ ЛОГИКА ПРОТОТИПА FPS-ШУТЕРА
+ *  Разделы:
+ *   1. WebSocket-соединение + переподключение
+ *   2. Экран входа и лобби-чат
+ *   3. Инициализация Three.js сцены (по данным карты от сервера)
+ *   4. Управление игроком (pointer lock, WASD, прыжок, коллизии)
+ *   5. Оружие: стрельба (хитскан), гранаты (простая баллистика)
+ *   6. HUD: здоровье, патроны, таймер, киллфид, скорборд
+ *   7. Синхронизация с другими игроками по снапшотам сервера
+ * ==================================================================== */
+
+// ---------------------------------------------------------------------
+// 1. WEBSOCKET + ПЕРЕПОДКЛЮЧЕНИЕ
+// ---------------------------------------------------------------------
+
+let ws = null;
+let myId = null;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+let hasJoined = false; // если true — при реконнекте автоматически шлём join заново
+let myName = '';
+
+function wsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${location.host}`;
+}
+
+function connect() {
+  setConnStatus('Подключение к серверу...', false);
+  ws = new WebSocket(wsUrl());
+
+  ws.addEventListener('open', () => {
+    reconnectAttempts = 0;
+    setConnStatus('Соединение установлено', true);
+    document.getElementById('playBtn').disabled = false;
+    // если игрок уже был в игре (разрыв связи во время матча) — переподключаемся автоматически
+    if (hasJoined) {
+      ws.send(JSON.stringify({ type: 'join', name: myName }));
+    }
+  });
+
+  ws.addEventListener('message', (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handleServerMessage(msg);
+  });
+
+  ws.addEventListener('close', () => {
+    setConnStatus('Соединение потеряно. Переподключение...', false);
+    document.getElementById('playBtn').disabled = true;
+    scheduleReconnect();
+  });
+
+  ws.addEventListener('error', () => {
+    ws.close();
+  });
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectAttempts++;
+  // экспоненциальная задержка с потолком в 8 секунд
+  const delay = Math.min(8000, 500 * Math.pow(1.6, reconnectAttempts));
+  reconnectTimer = setTimeout(connect, delay);
+}
+
+function setConnStatus(text, ok) {
+  const el = document.getElementById('connStatus');
+  el.textContent = text;
+  el.className = 'conn-status' + (ok ? ' ok' : (ok === false ? ' bad' : ''));
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+connect();
+
+// ---------------------------------------------------------------------
+// 2. ЭКРАН ВХОДА И ЛОББИ-ЧАТ
+// ---------------------------------------------------------------------
+
+const loginScreen = document.getElementById('loginScreen');
+const nameInput = document.getElementById('nameInput');
+const playBtn = document.getElementById('playBtn');
+const lobbyChatLog = document.getElementById('lobbyChatLog');
+const lobbyChatInput = document.getElementById('lobbyChatInput');
+const gameChatLog = document.getElementById('gameChatLog');
+const gameChatInput = document.getElementById('gameChatInput');
+
+nameInput.value = 'Игрок' + Math.floor(Math.random() * 1000);
+
+playBtn.addEventListener('click', startGame);
+nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') startGame(); });
+
+function startGame() {
+  const name = nameInput.value.trim() || 'Игрок';
+  myName = name;
+  hasJoined = true;
+  send({ type: 'join', name });
+  loginScreen.style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  requestPointerLock();
+}
+
+lobbyChatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const text = lobbyChatInput.value.trim();
+    if (text) { send({ type: 'chat', text }); lobbyChatInput.value = ''; }
+  }
+});
+
+function appendChat(container, name, text) {
+  const div = document.createElement('div');
+  div.className = 'msg';
+  div.innerHTML = `<span class="name">${escapeHtml(name)}:</span> ${escapeHtml(text)}`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  // ограничиваем историю, чтобы не разрастался DOM
+  while (container.children.length > 60) container.removeChild(container.firstChild);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------------------------------------------------------------------
+// 3. THREE.JS СЦЕНА
+// ---------------------------------------------------------------------
+
+const canvas = document.getElementById('gameCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = false;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(80, innerWidth / innerHeight, 0.1, 500);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+let currentMapGroup = null;
+let currentMapData = null;
+
+/** Строит 3D-сцену карты (пол + препятствия) на основе данных от сервера. */
+function buildMap(mapData) {
+  if (currentMapGroup) scene.remove(currentMapGroup);
+  currentMapGroup = new THREE.Group();
+  currentMapData = mapData;
+
+  scene.background = new THREE.Color(mapData.skyColor);
+  scene.fog = new THREE.Fog(mapData.skyColor, 40, 130);
+
+  // освещение
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x404040, 1.1);
+  currentMapGroup.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+  sun.position.set(30, 50, 20);
+  currentMapGroup.add(sun);
+
+  // пол
+  const groundSize = Math.max(
+    mapData.bounds.maxX - mapData.bounds.minX,
+    mapData.bounds.maxZ - mapData.bounds.minZ
+  ) + 10;
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(groundSize, groundSize),
+    new THREE.MeshStandardMaterial({ color: mapData.groundColor })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  currentMapGroup.add(ground);
+
+  // препятствия (ящики/стены)
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0x8a6d4b });
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x5c5147 });
+  for (const box of mapData.obstacles) {
+    const isWall = box.h >= 3;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(box.w, box.h, box.d),
+      isWall ? wallMat : boxMat
+    );
+    mesh.position.set(box.x, box.h / 2, box.z);
+    currentMapGroup.add(mesh);
+  }
+
+  scene.add(currentMapGroup);
+}
+
+// ---------------------------------------------------------------------
+// ДРУГИЕ ИГРОКИ — визуальное представление (простая капсула + бирка с именем)
+// ---------------------------------------------------------------------
+
+const otherPlayerMeshes = new Map(); // id -> { group, body, nameSprite }
+
+function createPlayerMesh(name) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.4, 1.0, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x3aa0ff })
+  );
+  body.position.y = 0.9;
+  group.add(body);
+
+  const gunMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.15, 0.15, 0.6),
+    new THREE.MeshStandardMaterial({ color: 0x222222 })
+  );
+  gunMesh.position.set(0.3, 1.1, 0.3);
+  group.add(gunMesh);
+
+  const label = makeNameSprite(name);
+  label.position.y = 2.1;
+  group.add(label);
+
+  scene.add(group);
+  return { group, body, label };
+}
+
+function makeNameSprite(text) {
+  const cnv = document.createElement('canvas');
+  cnv.width = 256; cnv.height = 64;
+  const ctx = cnv.getContext('2d');
+  ctx.fillStyle = 'rgba(10,12,13,0.65)';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.font = '600 32px Rajdhani, sans-serif';
+  ctx.fillStyle = '#ff9d2e';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, 128, 42);
+  const tex = new THREE.CanvasTexture(cnv);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(2, 0.5, 1);
+  return sprite;
+}
+
+// ---------------------------------------------------------------------
+// 4. УПРАВЛЕНИЕ ИГРОКОМ (движение, коллизии, pointer lock)
+// ---------------------------------------------------------------------
+
+const localPlayer = {
+  x: 0, y: 1, z: 0,
+  velY: 0,
+  yaw: 0, pitch: 0,
+  onGround: true,
+  alive: true,
+  hp: 100,
+  weapon: 'rifle',
+  ammo: { rifle: 30, pistol: 12 },
+  reloading: false,
+};
+
+const keys = {};
+const MOVE_SPEED = 6.0;
+const JUMP_FORCE = 5.2;
+const GRAVITY = -14;
+const PLAYER_RADIUS = 0.45;
+
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+
+  if (document.activeElement === gameChatInput || document.activeElement === lobbyChatInput) return;
+
+  if (e.code === 'Digit1') selectWeapon('rifle');
+  if (e.code === 'Digit2') selectWeapon('pistol');
+  if (e.code === 'Digit3') selectWeapon('knife');
+  if (e.code === 'Digit4') selectWeapon('grenade_frag');
+  if (e.code === 'Digit5') selectWeapon('grenade_smoke');
+  if (e.code === 'KeyR') send({ type: 'reload' });
+  if (e.code === 'Enter') {
+    e.preventDefault();
+    gameChatInput.style.display = 'block';
+    gameChatInput.focus();
+  }
+  if (e.code === 'Escape') {
+    document.exitPointerLock();
+  }
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+gameChatInput.addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+    const text = gameChatInput.value.trim();
+    if (text) send({ type: 'chat', text });
+    gameChatInput.value = '';
+    gameChatInput.style.display = 'none';
+    requestPointerLock();
+  }
+  if (e.key === 'Escape') {
+    gameChatInput.value = '';
+    gameChatInput.style.display = 'none';
+    requestPointerLock();
+  }
+});
+
+function requestPointerLock() {
+  canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+  canvas.requestPointerLock();
+}
+canvas.addEventListener('click', () => {
+  if (document.pointerLockElement !== canvas && gameChatInput.style.display !== 'block') {
+    requestPointerLock();
+  } else if (document.pointerLockElement === canvas) {
+    onFireOrThrow();
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement !== canvas) return;
+  const sensitivity = 0.0022;
+  localPlayer.yaw -= e.movementX * sensitivity;
+  localPlayer.pitch -= e.movementY * sensitivity;
+  const maxPitch = Math.PI / 2 - 0.05;
+  localPlayer.pitch = Math.max(-maxPitch, Math.min(maxPitch, localPlayer.pitch));
+});
+
+// weapon slot 4/5 обозначают гранаты — они не заменяют основное оружие на сервере,
+// а лишь переключают режим "текущего действия" ЛКМ на клиенте
+let actionMode = 'rifle'; // rifle | pistol | knife | grenade_frag | grenade_smoke
+
+function selectWeapon(w) {
+  actionMode = w;
+  updateSlotUI();
+  if (w === 'rifle' || w === 'pistol' || w === 'knife') {
+    localPlayer.weapon = w;
+    send({ type: 'switchWeapon', weapon: w });
+  }
+}
+
+function updateSlotUI() {
+  document.querySelectorAll('.slot').forEach(el => el.classList.remove('active'));
+  const map = { rifle: 1, pistol: 2, knife: 3, grenade_frag: 4, grenade_smoke: 5 };
+  const n = map[actionMode];
+  const el = document.querySelector(`.slot[data-slot="${n}"]`);
+  if (el) el.classList.add('active');
+}
+updateSlotUI();
+
+/** Направление взгляда камеры (единичный вектор) — используется для стрельбы/бросков. */
+function getAimDirection() {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  return dir;
+}
+
+let lastAutoFireHeld = false;
+function onFireOrThrow() {
+  if (!localPlayer.alive) return;
+  const dir = getAimDirection();
+  if (actionMode === 'grenade_frag') {
+    send({ type: 'throwGrenade', kind: 'frag', dx: dir.x, dy: dir.y, dz: dir.z });
+  } else if (actionMode === 'grenade_smoke') {
+    send({ type: 'throwGrenade', kind: 'smoke', dx: dir.x, dy: dir.y, dz: dir.z });
+  } else {
+    fireWeapon(dir);
+  }
+}
+
+function fireWeapon(dir) {
+  send({ type: 'shoot', dx: dir.x, dy: dir.y, dz: dir.z });
+  // маленькая отдача-встряска камеры для отклика
+  camKick = 0.03;
+}
+let camKick = 0;
+
+// автоматический огонь для автомата при удержании ЛКМ
+let mouseDown = false;
+canvas.addEventListener('mousedown', (e) => { if (e.button === 0) mouseDown = true; });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; });
+let fireAccum = 0;
+
+// ---------------------------------------------------------------------
+// КОЛЛИЗИИ С ПРЕПЯТСТВИЯМИ (простой push-out круга из AABB)
+// ---------------------------------------------------------------------
+
+function resolveCollisions(pos) {
+  if (!currentMapData) return;
+  for (const box of currentMapData.obstacles) {
+    const minX = box.x - box.w / 2 - PLAYER_RADIUS;
+    const maxX = box.x + box.w / 2 + PLAYER_RADIUS;
+    const minZ = box.z - box.d / 2 - PLAYER_RADIUS;
+    const maxZ = box.z + box.d / 2 + PLAYER_RADIUS;
+    if (pos.x > minX && pos.x < maxX && pos.z > minZ && pos.z < maxZ) {
+      // выталкиваем по минимальной оси проникновения
+      const overlapX = Math.min(pos.x - minX, maxX - pos.x);
+      const overlapZ = Math.min(pos.z - minZ, maxZ - pos.z);
+      if (overlapX < overlapZ) {
+        pos.x += (pos.x - box.x > 0) ? overlapX : -overlapX;
+      } else {
+        pos.z += (pos.z - box.z > 0) ? overlapZ : -overlapZ;
+      }
+    }
+  }
+  if (currentMapData.bounds) {
+    const b = currentMapData.bounds;
+    pos.x = Math.max(b.minX + 1, Math.min(b.maxX - 1, pos.x));
+    pos.z = Math.max(b.minZ + 1, Math.min(b.maxZ - 1, pos.z));
+  }
+}
+
+function updateMovement(dt) {
+  if (!localPlayer.alive) return;
+
+  const forward = new THREE.Vector3(Math.sin(localPlayer.yaw), 0, Math.cos(localPlayer.yaw));
+  const right = new THREE.Vector3(Math.cos(localPlayer.yaw), 0, -Math.sin(localPlayer.yaw));
+
+  let move = new THREE.Vector3();
+  if (keys['KeyW']) move.sub(forward);
+  if (keys['KeyS']) move.add(forward);
+  if (keys['KeyA']) move.sub(right);
+  if (keys['KeyD']) move.add(right);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(MOVE_SPEED * dt);
+
+  const nextPos = { x: localPlayer.x + move.x, z: localPlayer.z + move.z };
+  resolveCollisions(nextPos);
+  localPlayer.x = nextPos.x;
+  localPlayer.z = nextPos.z;
+
+  // прыжок / гравитация
+  if (keys['Space'] && localPlayer.onGround) {
+    localPlayer.velY = JUMP_FORCE;
+    localPlayer.onGround = false;
+  }
+  localPlayer.velY += GRAVITY * dt;
+  localPlayer.y += localPlayer.velY * dt;
+  if (localPlayer.y <= 1) {
+    localPlayer.y = 1;
+    localPlayer.velY = 0;
+    localPlayer.onGround = true;
+  }
+
+  // отправляем состояние на сервер (клиентское предсказание позиции)
+  send({
+    type: 'input',
+    x: localPlayer.x, y: localPlayer.y, z: localPlayer.z,
+    yaw: localPlayer.yaw, pitch: localPlayer.pitch,
+  });
+
+  // автомат стреляет очередями при удержании ЛКМ, если выбран как режим действия
+  if (mouseDown && actionMode === 'rifle' && document.pointerLockElement === canvas) {
+    fireAccum += dt;
+    if (fireAccum > 0.1) { fireAccum = 0; fireWeapon(getAimDirection()); }
+  } else {
+    fireAccum = 0;
+  }
+}
+
+// ---------------------------------------------------------------------
+// 5. ВИЗУАЛЬНЫЕ ЭФФЕКТЫ: ТРАССЕРЫ ПУЛЬ, ГРАНАТЫ, ВЗРЫВЫ, ДЫМ
+// ---------------------------------------------------------------------
+
+const tracers = []; // { mesh, life }
+const grenadeMeshes = new Map(); // id -> mesh
+const smokeMeshes = new Map(); // id -> { mesh, until }
+
+function spawnTracer(from, to) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(from.x, from.y, from.z),
+    new THREE.Vector3(to.x, to.y, to.z),
+  ]);
+  const mat = new THREE.LineBasicMaterial({ color: 0xffd27a });
+  const line = new THREE.Line(geo, mat);
+  scene.add(line);
+  tracers.push({ mesh: line, life: 0.08 });
+}
+
+function spawnExplosionFlash(pos, color = 0xffa040) {
+  const geo = new THREE.SphereGeometry(0.4, 12, 12);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(pos.x, pos.y, pos.z);
+  scene.add(mesh);
+  tracers.push({ mesh, life: 0.35, grow: true });
+}
+
+function spawnSmokeCloud(id, pos, radius, lifeMs) {
+  const geo = new THREE.SphereGeometry(radius, 16, 16);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xbfbfbf, transparent: true, opacity: 0.55 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(pos.x, pos.y, pos.z);
+  scene.add(mesh);
+  smokeMeshes.set(id, { mesh, until: Date.now() + lifeMs });
+}
+
+// ---------------------------------------------------------------------
+// 6. HUD
+// ---------------------------------------------------------------------
+
+const healthBarInner = document.getElementById('healthBarInner');
+const healthNum = document.getElementById('healthNum');
+const weaponNameEl = document.getElementById('weaponName');
+const ammoNumEl = document.getElementById('ammoNum');
+const timerEl = document.getElementById('timer');
+const mapLabelEl = document.getElementById('mapLabel');
+const killFeedEl = document.getElementById('killFeed');
+const scoreboardEl = document.getElementById('scoreboard');
+const deathOverlay = document.getElementById('deathOverlay');
+const deathSub = document.getElementById('deathSub');
+
+const WEAPON_LABELS = { rifle: 'АВТОМАТ', pistol: 'ПИСТОЛЕТ', knife: 'НОЖ', grenade_frag: 'Ф-ГРАНАТА', grenade_smoke: 'ДЫМ. ГРАНАТА' };
+
+function updateHudWeapon() {
+  weaponNameEl.textContent = WEAPON_LABELS[actionMode] || '';
+  if (actionMode === 'rifle' || actionMode === 'pistol') {
+    ammoNumEl.textContent = localPlayer.ammo[actionMode] ?? '-';
+  } else if (actionMode === 'knife') {
+    ammoNumEl.textContent = '∞';
+  } else {
+    ammoNumEl.textContent = '';
+  }
+}
+
+function updateHealthUI() {
+  const pct = Math.max(0, localPlayer.hp);
+  healthBarInner.style.width = pct + '%';
+  healthBarInner.style.background = pct > 50 ? 'var(--green)' : (pct > 25 ? 'var(--amber)' : 'var(--red)');
+  healthNum.textContent = Math.max(0, Math.round(localPlayer.hp));
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function addKillFeed(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  killFeedEl.appendChild(div);
+  setTimeout(() => div.remove(), 5000);
+  while (killFeedEl.children.length > 5) killFeedEl.removeChild(killFeedEl.firstChild);
+}
+
+function updateScoreboard(players) {
+  scoreboardEl.innerHTML = '<div class="brand-eyebrow" style="margin-bottom:4px;">СЧЁТ</div>';
+  const sorted = [...players].sort((a, b) => b.kills - a.kills);
+  for (const p of sorted.slice(0, 10)) {
+    const row = document.createElement('div');
+    row.className = 'row' + (p.id === myId ? ' me' : '');
+    row.innerHTML = `<span>${escapeHtml(p.name)}</span><span>${p.kills}/${p.deaths}</span>`;
+    scoreboardEl.appendChild(row);
+  }
+}
+
+// ---------------------------------------------------------------------
+// 7. ОБРАБОТКА СООБЩЕНИЙ ОТ СЕРВЕРА
+// ---------------------------------------------------------------------
+
+let latestRoundTime = 300;
+let allPlayers = [];
+
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case 'init': {
+      myId = msg.id;
+      buildMap(msg.mapData);
+      mapLabelEl.textContent = msg.mapData.name;
+      latestRoundTime = msg.roundTimeLeft;
+      allPlayers = msg.players;
+      syncOtherPlayers(msg.players);
+      const me = msg.players.find(p => p.id === myId);
+      if (me) {
+        localPlayer.x = me.x; localPlayer.y = me.y; localPlayer.z = me.z;
+        localPlayer.hp = me.hp;
+      }
+      break;
+    }
+    case 'joinError': {
+      setConnStatus(msg.reason, false);
+      break;
+    }
+    case 'playerJoined': {
+      appendChat(lobbyChatLog, 'Система', `игрок появился на сервере`);
+      break;
+    }
+    case 'playerLeft': {
+      const rec = otherPlayerMeshes.get(msg.id);
+      if (rec) { scene.remove(rec.group); otherPlayerMeshes.delete(msg.id); }
+      break;
+    }
+    case 'chat': {
+      appendChat(lobbyChatLog, msg.name, msg.text);
+      appendChat(gameChatLog, msg.name, msg.text);
+      break;
+    }
+    case 'state': {
+      allPlayers = msg.players;
+      latestRoundTime = msg.roundTimeLeft;
+      syncOtherPlayers(msg.players);
+      updateScoreboard(msg.players);
+      const me = msg.players.find(p => p.id === myId);
+      if (me) {
+        localPlayer.hp = me.hp;
+        localPlayer.alive = me.alive;
+        if (me.ammo !== null && me.ammo !== undefined) localPlayer.ammo[me.weapon] = me.ammo;
+        updateHealthUI();
+        updateHudWeapon();
+      }
+      syncGrenades(msg.grenades);
+      timerEl.textContent = formatTime(latestRoundTime);
+      break;
+    }
+    case 'shotFired': {
+      spawnTracer(msg.from, msg.to);
+      break;
+    }
+    case 'damaged': {
+      if (msg.id === myId) {
+        localPlayer.hp = msg.hp;
+        updateHealthUI();
+        flashDamageVignette();
+      }
+      break;
+    }
+    case 'playerDied': {
+      addKillFeed(`${msg.killerName}  ✕  ${msg.victimName}`);
+      if (msg.id === myId) {
+        localPlayer.alive = false;
+        deathOverlay.style.display = 'flex';
+      }
+      break;
+    }
+    case 'respawn': {
+      if (msg.id === myId) {
+        localPlayer.x = msg.x; localPlayer.y = msg.y; localPlayer.z = msg.z;
+        localPlayer.hp = 100;
+        localPlayer.alive = true;
+        deathOverlay.style.display = 'none';
+      }
+      break;
+    }
+    case 'explosion': {
+      if (msg.kind === 'frag') {
+        spawnExplosionFlash(msg, 0xffa040);
+      } else {
+        spawnExplosionFlash(msg, 0xcccccc);
+        spawnSmokeCloud('smoke_' + Date.now(), msg, msg.radius, msg.life);
+      }
+      break;
+    }
+    case 'mapChange': {
+      buildMap(msg.mapData);
+      mapLabelEl.textContent = msg.mapData.name;
+      latestRoundTime = msg.roundTimeLeft;
+      allPlayers = msg.players;
+      syncOtherPlayers(msg.players);
+      const me = msg.players.find(p => p.id === myId);
+      if (me) {
+        localPlayer.x = me.x; localPlayer.y = me.y; localPlayer.z = me.z;
+        localPlayer.hp = 100; localPlayer.alive = true;
+      }
+      deathOverlay.style.display = 'none';
+      break;
+    }
+  }
+}
+
+function syncOtherPlayers(players) {
+  const seen = new Set();
+  for (const p of players) {
+    if (p.id === myId) continue;
+    seen.add(p.id);
+    let rec = otherPlayerMeshes.get(p.id);
+    if (!rec) {
+      rec = createPlayerMesh(p.name);
+      otherPlayerMeshes.set(p.id, rec);
+    }
+    rec.group.position.set(p.x, p.y, p.z);
+    rec.group.rotation.y = p.yaw;
+    rec.group.visible = p.alive;
+  }
+  for (const [id, rec] of otherPlayerMeshes) {
+    if (!seen.has(id)) { scene.remove(rec.group); otherPlayerMeshes.delete(id); }
+  }
+}
+
+function syncGrenades(grenades) {
+  const seen = new Set();
+  for (const g of grenades) {
+    if (g.exploded) continue;
+    seen.add(g.id);
+    let mesh = grenadeMeshes.get(g.id);
+    if (!mesh) {
+      const color = g.kind === 'frag' ? 0x556b2f : 0xaaaaaa;
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshStandardMaterial({ color }));
+      scene.add(mesh);
+      grenadeMeshes.set(g.id, mesh);
+    }
+    mesh.position.set(g.x, g.y, g.z);
+  }
+  for (const [id, mesh] of grenadeMeshes) {
+    if (!seen.has(id)) { scene.remove(mesh); grenadeMeshes.delete(id); }
+  }
+}
+
+let damageFlashUntil = 0;
+function flashDamageVignette() {
+  damageFlashUntil = Date.now() + 250;
+}
+
+// ---------------------------------------------------------------------
+// ГЛАВНЫЙ ЦИКЛ РЕНДЕРА
+// ---------------------------------------------------------------------
+
+let lastFrame = performance.now();
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastFrame) / 1000);
+  lastFrame = now;
+
+  if (hasJoined) updateMovement(dt);
+
+  // обновление трассеров/эффектов
+  for (let i = tracers.length - 1; i >= 0; i--) {
+    const t = tracers[i];
+    t.life -= dt;
+    if (t.grow) {
+      t.mesh.scale.multiplyScalar(1 + dt * 8);
+      t.mesh.material.opacity *= 0.85;
+    }
+    if (t.life <= 0) { scene.remove(t.mesh); tracers.splice(i, 1); }
+  }
+
+  // очистка истёкшего дыма
+  const nowTs = Date.now();
+  for (const [id, s] of smokeMeshes) {
+    if (nowTs > s.until) { scene.remove(s.mesh); smokeMeshes.delete(id); }
+  }
+
+  // камера следует за игроком (вид от первого лица)
+  camera.position.set(localPlayer.x, localPlayer.y + 1.6 + camKick, localPlayer.z);
+  camKick *= 0.85;
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = localPlayer.yaw;
+  camera.rotation.x = localPlayer.pitch;
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
 </body>
 </html>
