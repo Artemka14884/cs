@@ -1,7 +1,7 @@
 {
-  "name": "tactical-shooter-prototype",
+  "name": "arena-fps-online",
   "version": "1.0.0",
-  "description": "Прототип мультиплеерного FPS-шутера в стиле CS2 (Node.js + Express + WebSocket + Three.js)",
+  "description": "3D онлайн-шутер (CS-style) с отдачей оружия, AK-47 и баннихопом на Three.js + Socket.io",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "ws": "^8.17.0"
+    "socket.io": "^4.7.5"
   }
 }

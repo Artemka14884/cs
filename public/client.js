@@ -153,13 +153,18 @@ function addCrateStack(cx, cy, cz, count) {
 
 // Карта строится после получения ответа от сервера (см. socket.on('init', ...) ниже),
 // чтобы все игроки сессии видели одну и ту же карту.
+let activeMapId = 'training';
 function buildMap(mapId) {
+  activeMapId = mapId;
   if (mapId === 'bazaar') {
     buildDesertBazaarMap();
+  } else if (mapId === 'industrial') {
+    buildIndustrialMap();
   } else {
     buildTrainingMap();
   }
   colliders.forEach(c => c.box3.setFromObject(c.mesh));
+  spawnGrenadePickups(mapId);
 }
 
 // ---------- Пустынный рынок (оригинальная карта в духе ближневосточного города,
@@ -348,6 +353,112 @@ function addCrateStackDesert(cx, cy, cz, count, mat) {
   }
 }
 
+// ---------- Промышленная зона (оригинальная карта: контейнерный склад/порт) ----------
+function buildIndustrialMap() {
+  const matGround = new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 0.95 });
+  const matContainerRed = new THREE.MeshStandardMaterial({ color: 0xa8412f, roughness: 0.6, metalness: 0.3 });
+  const matContainerBlue = new THREE.MeshStandardMaterial({ color: 0x2f6fa8, roughness: 0.6, metalness: 0.3 });
+  const matContainerYellow = new THREE.MeshStandardMaterial({ color: 0xc4a12b, roughness: 0.6, metalness: 0.3 });
+  const matContainerGreen = new THREE.MeshStandardMaterial({ color: 0x3f7a3f, roughness: 0.6, metalness: 0.3 });
+  const matConcrete = new THREE.MeshStandardMaterial({ color: 0x8b8f94, roughness: 0.9 });
+  const matBeam = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.4, metalness: 0.8 });
+
+  scene.background = new THREE.Color(0x6d7686);
+  scene.fog = new THREE.Fog(0x6d7686, 40, 140);
+  hemi.color.set(0xcfd8e3);
+  hemi.groundColor.set(0x3a3d42);
+  sun.color.set(0xdfe6ee);
+  sun.intensity = 1.0;
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), matGround);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Границы порта
+  addBox(140, 9, 1, 0, 4.5, -70, matConcrete);
+  addBox(140, 9, 1, 0, 4.5, 70, matConcrete);
+  addBox(1, 9, 140, -70, 4.5, 0, matConcrete);
+  addBox(1, 9, 140, 70, 4.5, 0, matConcrete);
+
+  const containerColors = [matContainerRed, matContainerBlue, matContainerYellow, matContainerGreen];
+  function container(x, z, rotY, stacked, colorIdx) {
+    const mat = containerColors[colorIdx % containerColors.length];
+    const w = 2.4, h = 2.6, d = 6;
+    const g = addBox(w, h, d, x, h / 2, z, mat);
+    g.rotation.y = rotY;
+    // Пересчитываем коллайдер под финальный поворот (box3 считается в момент addBox, до rotation)
+    const entry = colliders.find(c => c.mesh === g);
+    if (entry) entry.box3.setFromObject(g);
+
+    if (stacked) {
+      const g2 = addBox(w, h, d, x, h * 1.5, z, containerColors[(colorIdx + 1) % containerColors.length]);
+      g2.rotation.y = rotY;
+      const entry2 = colliders.find(c => c.mesh === g2);
+      if (entry2) entry2.box3.setFromObject(g2);
+    }
+    return g;
+  }
+
+  // Ряды контейнеров (укрытия, лабиринт для перестрелок)
+  container(-20, -20, 0, true, 0);
+  container(-20, -10, 0, false, 1);
+  container(-12, -20, Math.PI / 2, false, 2);
+  container(20, 20, 0, true, 3);
+  container(20, 10, 0, false, 0);
+  container(12, 20, Math.PI / 2, false, 1);
+  container(-20, 20, Math.PI / 2, false, 2);
+  container(20, -20, Math.PI / 2, true, 3);
+  container(0, -30, 0, false, 1);
+  container(0, 30, 0, false, 2);
+  container(-30, 0, Math.PI / 2, false, 0);
+  container(30, 0, Math.PI / 2, false, 3);
+
+  // Центральная зона — открытая площадка с ящиками
+  addCrateStackIndustrial(0, 0, 0, 4);
+  addCrateStackIndustrial(6, 0, -4, 2);
+  addCrateStackIndustrial(-6, 0, 4, 3);
+
+  // Портовые краны (визуальный ориентир + частичная коллизия по опорам)
+  function crane(x, z) {
+    addBox(1, 14, 1, x - 4, 7, z, matBeam);
+    addBox(1, 14, 1, x + 4, 7, z, matBeam);
+    addBox(9, 0.6, 1, x, 14, z, matBeam, false);
+    addBox(0.5, 0.5, 6, x, 13.6, z - 3, matBeam, false);
+  }
+  crane(-40, -40);
+  crane(40, 40);
+
+  // Штабеля ящиков вдоль стен под тренировку прицела
+  for (let i = -2; i <= 2; i++) {
+    addBox(3, 4, 0.3, i * 5, 2, -35, matBeam);
+  }
+
+  // Зона баннихопа — металлические платформы/рампы
+  const bhopZ = 45;
+  const rampCount = 7;
+  for (let i = 0; i < rampCount; i++) {
+    const x = -24 + i * 8;
+    const height = 1 + i * 0.6;
+    addBox(4, 0.5, 4, x, height, bhopZ, matBeam);
+    if (i < rampCount - 1) {
+      const rampMesh = addBox(4, 0.4, 4.2, x + 4, height + 0.4, bhopZ, matBeam);
+      rampMesh.rotation.x = -0.35;
+    }
+  }
+}
+
+function addCrateStackIndustrial(cx, cy, cz, count) {
+  const positions = [
+    [0, 0, 0], [1.1, 0, 0], [0.55, 1.1, 0], [0, 0, 1.1], [1.1, 0, 1.1]
+  ];
+  const mat = new THREE.MeshStandardMaterial({ color: 0xb8863b, roughness: 0.7 });
+  for (let i = 0; i < Math.min(count, positions.length); i++) {
+    const [dx, dy, dz] = positions[i];
+    addBox(1, 1, 1, cx + dx, cy + 0.5 + dy, cz + dz, mat);
+  }
+}
+
 // ---------- AK-47 (процедурная модель, не текстуры из игр) ----------
 function buildAK47() {
   const group = new THREE.Group();
@@ -420,24 +531,146 @@ function buildAK47() {
   return group;
 }
 
-const weaponGroup = buildAK47();
-weaponGroup.position.set(0.22, -0.22, -0.45);
-weaponGroup.rotation.y = Math.PI;
-camera.add(weaponGroup);
+// ---------- Пистолет (процедурная модель) ----------
+function buildPistol() {
+  const group = new THREE.Group();
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0x35383d, roughness: 0.3, metalness: 0.75 });
+  const gripMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+
+  const slide = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.055, 0.24), steelMat);
+  slide.position.set(0, 0.03, -0.06);
+  group.add(slide);
+
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.1, 10), steelMat);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.035, -0.22);
+  group.add(barrel);
+
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.12), steelMat);
+  frame.position.set(0, -0.005, 0.02);
+  group.add(frame);
+
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.13, 0.06), gripMat);
+  grip.position.set(0, -0.09, 0.06);
+  grip.rotation.x = 0.25;
+  group.add(grip);
+
+  const trigger = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, 0.012), steelMat);
+  trigger.position.set(0, -0.02, -0.01);
+  group.add(trigger);
+
+  const sight = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), steelMat);
+  sight.position.set(0, 0.06, -0.15);
+  group.add(sight);
+
+  group.traverse(o => { if (o.isMesh) o.castShadow = true; });
+
+  const muzzlePoint = new THREE.Object3D();
+  muzzlePoint.position.set(0, 0.035, -0.27);
+  group.add(muzzlePoint);
+  group.userData.muzzlePoint = muzzlePoint;
+
+  return group;
+}
+
+// ---------- Нож (процедурная модель) ----------
+function buildKnife() {
+  const group = new THREE.Group();
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xc7ccd1, roughness: 0.2, metalness: 0.9 });
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x2b1d12, roughness: 0.7 });
+
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.012, 0.22), bladeMat);
+  blade.position.set(0, 0, -0.14);
+  group.add(blade);
+
+  const bladeTip = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.05, 4), bladeMat);
+  bladeTip.rotation.x = -Math.PI / 2;
+  bladeTip.rotation.y = Math.PI / 4;
+  bladeTip.position.set(0, 0, -0.27);
+  group.add(bladeTip);
+
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.02), new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5, metalness: 0.6 }));
+  guard.position.set(0, 0, -0.02);
+  group.add(guard);
+
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.13, 8), handleMat);
+  handle.rotation.x = Math.PI / 2;
+  handle.position.set(0, 0, 0.06);
+  group.add(handle);
+
+  group.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return group;
+}
+
+// ---------- Набор оружия и переключение ----------
+function attachMuzzleFX(group) {
+  const mp = group.userData.muzzlePoint;
+  if (!mp) return null;
+  const light = new THREE.PointLight(0xffb347, 0, 4, 2);
+  light.position.copy(mp.position);
+  group.add(light);
+
+  const geo = new THREE.ConeGeometry(0.03, 0.12, 8);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.copy(mp.position);
+  mesh.position.z -= 0.05;
+  group.add(mesh);
+
+  return { light, mat };
+}
+
+const ak47Group = buildAK47();
+ak47Group.position.set(0.22, -0.22, -0.45);
+ak47Group.rotation.y = Math.PI;
+
+const pistolGroup = buildPistol();
+pistolGroup.position.set(0.2, -0.2, -0.35);
+pistolGroup.rotation.y = Math.PI;
+pistolGroup.visible = false;
+
+const knifeGroup = buildKnife();
+knifeGroup.position.set(0.18, -0.18, -0.32);
+knifeGroup.rotation.y = Math.PI;
+knifeGroup.visible = false;
+
+camera.add(ak47Group, pistolGroup, knifeGroup);
 scene.add(camera);
 
-// Дульная вспышка
-const flashLight = new THREE.PointLight(0xffb347, 0, 4, 2);
-weaponGroup.add(flashLight);
-flashLight.position.copy(weaponGroup.userData.muzzlePoint.position);
+const weaponFX = {
+  ak47: attachMuzzleFX(ak47Group),
+  pistol: attachMuzzleFX(pistolGroup)
+};
+const weaponGroups = { ak47: ak47Group, pistol: pistolGroup, knife: knifeGroup };
 
-const flashGeo = new THREE.ConeGeometry(0.03, 0.12, 8);
-const flashMat = new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0 });
-const flashMesh = new THREE.Mesh(flashGeo, flashMat);
-flashMesh.rotation.x = -Math.PI / 2;
-flashMesh.position.copy(weaponGroup.userData.muzzlePoint.position);
-flashMesh.position.z -= 0.05;
-weaponGroup.add(flashMesh);
+const WEAPON_STATS = {
+  ak47: { kind: 'gun', magSize: 30, rof: 100, dmg: 27, headDmg: 60, reloadTime: 1600 },
+  pistol: { kind: 'gun', magSize: 12, rof: 260, dmg: 22, headDmg: 45, reloadTime: 1200 },
+  knife: { kind: 'melee', dmg: 55, range: 2.3, swingTime: 430 }
+};
+
+let currentWeapon = 'ak47';
+
+function switchWeapon(name) {
+  if (!weaponGroups[name] || currentWeapon === name || player.reloading) return;
+  weaponGroups[currentWeapon].visible = false;
+  weaponGroups[name].visible = true;
+  currentWeapon = name;
+  recoilOffsetPitch = 0;
+  recoilOffsetYaw = 0;
+  recoilIndex = 0;
+  updateAmmoHUD();
+  updateWeaponNameHUD();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Digit1') switchWeapon('ak47');
+  if (e.code === 'Digit2') switchWeapon('pistol');
+  if (e.code === 'Digit3') switchWeapon('knife');
+  if (e.code === 'KeyG') throwGrenade();
+});
+
 
 // ---------- Игрок: физика движения (Source-style, с баннихопом) ----------
 const player = {
@@ -450,10 +683,10 @@ const player = {
   radius: 0.35,
   health: 100,
   alive: true,
-  ammo: 30,
-  reserve: Infinity, // бесконечные патроны
+  ammoByWeapon: { ak47: 30, pistol: 12 },
   reloading: false,
-  jumpQueued: false
+  jumpQueued: false,
+  grenades: 1
 };
 
 const keys = {};
@@ -500,9 +733,12 @@ document.getElementById('chatInput').addEventListener('keydown', (e) => {
   }
 });
 
-// ---------- Мышь / Pointer Lock ----------
+// ---------- Мышь / Pointer Lock / Тач-управление ----------
 const canvas = renderer.domElement;
 const lockHint = document.getElementById('crosshairLockHint');
+
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches;
+let touchControlsActive = false;
 
 function requestLock() { canvas.requestPointerLock(); }
 
@@ -512,10 +748,17 @@ document.getElementById('playBtn').addEventListener('click', () => {
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   socket.emit('join', { name, mapId });
-  requestLock();
+
+  if (isTouchDevice) {
+    document.getElementById('touchControls').classList.remove('hidden');
+    touchControlsActive = true;
+  } else {
+    requestLock();
+  }
 });
 
 canvas.addEventListener('click', () => {
+  if (isTouchDevice) return; // на тач-устройствах стрельба идёт через кнопку, а не клик по канвасу
   if (!pointerLocked && !document.getElementById('menu').classList.contains('hidden')) return;
   if (!pointerLocked) requestLock();
   else if (player.alive) shoot();
@@ -523,8 +766,7 @@ canvas.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === canvas;
-  lockHint.classList.toggle('hidden', pointerLocked || !document.getElementById('hud').classList.contains ? false : true);
-  lockHint.classList.toggle('hidden', pointerLocked);
+  lockHint.classList.toggle('hidden', pointerLocked || isTouchDevice);
   if (document.getElementById('menu').classList.contains('hidden') === false) {
     lockHint.classList.add('hidden');
   }
@@ -542,6 +784,125 @@ document.addEventListener('mousemove', (e) => {
 let mouseHeld = false;
 document.addEventListener('mousedown', (e) => { if (e.button === 0) mouseHeld = true; });
 document.addEventListener('mouseup', (e) => { if (e.button === 0) mouseHeld = false; });
+
+// ================= СЕНСОРНОЕ УПРАВЛЕНИЕ (телефон/планшет) =================
+// Джойстик слева — движение, свайп справа — обзор камерой,
+// отдельные кнопки — стрельба/прыжок/перезарядка.
+const touchMoveVector = { x: 0, y: 0 }; // x: право(+)/лево(-), y: вперёд(+)/назад(-)
+
+if (isTouchDevice) {
+  const joystickZone = document.getElementById('joystickZone');
+  const joystickBase = document.getElementById('joystickBase');
+  const joystickStick = document.getElementById('joystickStick');
+  const lookZone = document.getElementById('lookZone');
+
+  let joystickTouchId = null;
+  let joystickOriginX = 0, joystickOriginY = 0;
+  const JOYSTICK_RADIUS = 55;
+
+  joystickZone.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0];
+    if (joystickTouchId !== null) return;
+    joystickTouchId = t.identifier;
+    joystickOriginX = t.clientX;
+    joystickOriginY = t.clientY;
+    joystickBase.style.display = 'block';
+    joystickBase.style.left = (t.clientX - 55) + 'px';
+    joystickBase.style.top = (t.clientY - 55) + 'px';
+    joystickStick.style.top = '30px';
+    joystickStick.style.left = '30px';
+  }, { passive: true });
+
+  joystickZone.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== joystickTouchId) continue;
+      let dx = t.clientX - joystickOriginX;
+      let dy = t.clientY - joystickOriginY;
+      const dist = Math.min(Math.hypot(dx, dy), JOYSTICK_RADIUS);
+      const angle = Math.atan2(dy, dx);
+      dx = Math.cos(angle) * dist;
+      dy = Math.sin(angle) * dist;
+      joystickStick.style.left = (30 + dx) + 'px';
+      joystickStick.style.top = (30 + dy) + 'px';
+      touchMoveVector.x = dx / JOYSTICK_RADIUS;
+      touchMoveVector.y = -dy / JOYSTICK_RADIUS; // вверх на экране = вперёд
+    }
+  }, { passive: true });
+
+  function endJoystick(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== joystickTouchId) continue;
+      joystickTouchId = null;
+      joystickBase.style.display = 'none';
+      touchMoveVector.x = 0;
+      touchMoveVector.y = 0;
+    }
+  }
+  joystickZone.addEventListener('touchend', endJoystick, { passive: true });
+  joystickZone.addEventListener('touchcancel', endJoystick, { passive: true });
+
+  // Обзор камерой свайпом по правой части экрана
+  let lookTouchId = null;
+  let lastLookX = 0, lastLookY = 0;
+  const TOUCH_LOOK_SENS = 0.0055;
+
+  lookZone.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0];
+    if (lookTouchId !== null) return;
+    lookTouchId = t.identifier;
+    lastLookX = t.clientX;
+    lastLookY = t.clientY;
+  }, { passive: true });
+
+  lookZone.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== lookTouchId) continue;
+      const dx = t.clientX - lastLookX;
+      const dy = t.clientY - lastLookY;
+      lastLookX = t.clientX;
+      lastLookY = t.clientY;
+      player.yaw -= dx * TOUCH_LOOK_SENS;
+      player.pitch -= dy * TOUCH_LOOK_SENS;
+      player.pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, player.pitch));
+    }
+  }, { passive: true });
+
+  function endLook(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === lookTouchId) lookTouchId = null;
+    }
+  }
+  lookZone.addEventListener('touchend', endLook, { passive: true });
+  lookZone.addEventListener('touchcancel', endLook, { passive: true });
+
+  // Кнопки
+  const fireBtn = document.getElementById('touchFire');
+  fireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); mouseHeld = true; }, { passive: false });
+  fireBtn.addEventListener('touchend', (e) => { e.preventDefault(); mouseHeld = false; }, { passive: false });
+  fireBtn.addEventListener('touchcancel', () => { mouseHeld = false; });
+
+  const jumpBtn = document.getElementById('touchJump');
+  jumpBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (player.onGround) player.jumpQueued = true;
+  }, { passive: false });
+
+  const reloadBtn = document.getElementById('touchReload');
+  reloadBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startReload(); }, { passive: false });
+
+  const weaponSwitchBtn = document.getElementById('touchWeaponSwitch');
+  const WEAPON_CYCLE = ['ak47', 'pistol', 'knife'];
+  weaponSwitchBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const idx = WEAPON_CYCLE.indexOf(currentWeapon);
+    switchWeapon(WEAPON_CYCLE[(idx + 1) % WEAPON_CYCLE.length]);
+  }, { passive: false });
+
+  const grenadeBtn = document.getElementById('touchGrenade');
+  grenadeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); throwGrenade(); }, { passive: false });
+}
+
+
 
 // =========================================================
 // СИСТЕМА ОТДАЧИ AK-47 (spray-паттерн, как в CS)
@@ -579,12 +940,28 @@ let lastShotTime = 0;
 const RECOIL_RECOVERY_DELAY = 180; // мс после последнего выстрела, когда начинается восстановление
 const RECOIL_RECOVERY_SPEED = 0.09; // скорость возврата камеры
 
+// Отдача пистолета — заметно слабее и без длинного накопления, как у полуавтоматического оружия
+const PISTOL_RECOIL_PATTERN = (() => {
+  const pattern = [];
+  for (let i = 0; i < 12; i++) {
+    const up = 0.7 + Math.random() * 0.3;
+    const side = (Math.random() - 0.5) * 0.6;
+    pattern.push({ up: up * 0.011, side: side * 0.011 });
+  }
+  return pattern;
+})();
+
+function getActiveRecoilPattern() {
+  return currentWeapon === 'pistol' ? PISTOL_RECOIL_PATTERN : AK_RECOIL_PATTERN;
+}
+
 function applyRecoilToView() {
   // применяется вместе с движением мыши в render loop, ничего доп. тут не требуется
 }
 
 function fireRecoilKick() {
-  const step = AK_RECOIL_PATTERN[Math.min(recoilIndex, AK_RECOIL_PATTERN.length - 1)];
+  const pattern = getActiveRecoilPattern();
+  const step = pattern[Math.min(recoilIndex, pattern.length - 1)];
   recoilOffsetPitch += step.up;
   recoilOffsetYaw += step.side;
   recoilIndex++;
@@ -602,42 +979,28 @@ function updateRecoilRecovery(dt) {
   }
 }
 
-// ---------- Стрельба ----------
-const RATE_OF_FIRE = 100; // мс между выстрелами (~600 RPM как у AK-47)
+// ---------- Стрельба / ближний бой ----------
 let lastFireTime = 0;
+let lastMeleeTime = 0;
 const raycaster = new THREE.Raycaster();
 const otherPlayerMeshes = {}; // id -> group (для попаданий)
 
 function startReload() {
-  // Бесконечные патроны: перезарядка мгновенно заполняет магазин, резерв не тратится
-  if (player.reloading || player.ammo === 30) return;
+  const stats = WEAPON_STATS[currentWeapon];
+  if (stats.kind !== 'gun') return; // у ножа перезарядки нет
+  if (player.reloading || player.ammoByWeapon[currentWeapon] === stats.magSize) return;
   player.reloading = true;
+  const reloadingWeapon = currentWeapon;
   setTimeout(() => {
-    player.ammo = 30;
+    player.ammoByWeapon[reloadingWeapon] = stats.magSize;
     player.reloading = false;
     updateAmmoHUD();
-  }, 1600);
+  }, stats.reloadTime);
 }
 
-function shoot() {
-  if (!player.alive || player.reloading) return;
-  const now = performance.now();
-  if (now - lastFireTime < RATE_OF_FIRE) return;
-  if (player.ammo <= 0) { startReload(); return; }
-  lastFireTime = now;
-  player.ammo--; // магазин по-прежнему ограничен на 30, но резерв бесконечен — патроны никогда не заканчиваются насовсем
-  updateAmmoHUD();
-
-  fireRecoilKick();
-  muzzleFlash();
-
-  // Направление выстрела берётся из камеры (с учётом уже применённой отдачи в render loop)
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  const origin = camera.getWorldPosition(new THREE.Vector3());
-
+function raycastHit(origin, dir, maxRange) {
   raycaster.set(origin, dir);
-  raycaster.far = 200;
+  raycaster.far = maxRange;
 
   const targets = Object.values(otherPlayerMeshes);
   const meshList = [];
@@ -646,17 +1009,40 @@ function shoot() {
   const hits = raycaster.intersectObjects(meshList, false);
   const envHits = raycaster.intersectObjects(colliders.map(c => c.mesh), false);
 
-  let validHit = null;
   if (hits.length > 0) {
     const envDist = envHits.length > 0 ? envHits[0].distance : Infinity;
-    if (hits[0].distance < envDist) validHit = hits[0];
+    if (hits[0].distance < envDist) return hits[0];
   }
+  return null;
+}
 
+function shoot() {
+  if (!player.alive) return;
+  const stats = WEAPON_STATS[currentWeapon];
+
+  if (stats.kind === 'melee') { meleeAttack(stats); return; }
+  if (player.reloading) return;
+
+  const now = performance.now();
+  if (now - lastFireTime < stats.rof) return;
+  if (player.ammoByWeapon[currentWeapon] <= 0) { startReload(); return; }
+  lastFireTime = now;
+  player.ammoByWeapon[currentWeapon]--; // магазин ограничен, но резерв бесконечен — патроны никогда не заканчиваются насовсем
+  updateAmmoHUD();
+
+  fireRecoilKick();
+  muzzleFlash();
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+
+  const validHit = raycastHit(origin, dir, 200);
   if (validHit) {
     let obj = validHit.object;
     while (obj && !obj.userData.playerId) obj = obj.parent;
     if (obj) {
-      const dmg = obj.userData.headHit && validHit.object === obj.userData.headHit ? 60 : 27;
+      const dmg = obj.userData.headHit && validHit.object === obj.userData.headHit ? stats.headDmg : stats.dmg;
       socket.emit('hit', { targetId: obj.userData.playerId, damage: dmg });
     }
   }
@@ -664,14 +1050,214 @@ function shoot() {
   socket.emit('shoot', { origin: { x: origin.x, y: origin.y, z: origin.z }, dir: { x: dir.x, y: dir.y, z: dir.z } });
 }
 
-function muzzleFlash() {
-  flashLight.intensity = 6;
-  flashMat.opacity = 1;
-  setTimeout(() => { flashLight.intensity = 0; flashMat.opacity = 0; }, 45);
+function meleeAttack(stats) {
+  const now = performance.now();
+  if (now - lastMeleeTime < stats.swingTime) return;
+  lastMeleeTime = now;
 
-  // лёгкая тряска камеры/оружия визуально
-  weaponGroup.position.z += 0.03;
-  setTimeout(() => { weaponGroup.position.z -= 0.03; }, 40);
+  knifeSwingAnim();
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+
+  const validHit = raycastHit(origin, dir, stats.range);
+  if (validHit) {
+    let obj = validHit.object;
+    while (obj && !obj.userData.playerId) obj = obj.parent;
+    if (obj) {
+      socket.emit('hit', { targetId: obj.userData.playerId, damage: stats.dmg });
+    }
+  }
+}
+
+function knifeSwingAnim() {
+  const g = knifeGroup;
+  const baseX = g.position.x, baseY = g.position.y;
+  g.rotation.z = -0.6;
+  g.position.x -= 0.08;
+  setTimeout(() => {
+    g.rotation.z = 0.15;
+    g.position.x = baseX + 0.05;
+  }, 90);
+  setTimeout(() => {
+    g.rotation.z = 0;
+    g.position.x = baseX;
+    g.position.y = baseY;
+  }, 220);
+}
+
+function muzzleFlash() {
+  const fx = weaponFX[currentWeapon];
+  const group = weaponGroups[currentWeapon];
+  if (!fx || !group) return;
+  fx.light.intensity = 6;
+  fx.mat.opacity = 1;
+  setTimeout(() => { fx.light.intensity = 0; fx.mat.opacity = 0; }, 45);
+
+  // лёгкая тряска оружия визуально
+  group.position.z += 0.03;
+  setTimeout(() => { group.position.z -= 0.03; }, 40);
+}
+
+// =========================================================
+// ГРАНАТЫ: бросок с дугой полёта, взрыв с уроном по расстоянию,
+// плюс подбираемые точки спавна, случайно разбросанные по карте
+// и появляющиеся заново через некоторое время после подбора.
+// =========================================================
+const GRENADE_GRAVITY = 14;
+const GRENADE_THROW_SPEED = 16;
+const GRENADE_FUSE_TIME = 1500; // мс до взрыва после броска
+const GRENADE_RADIUS = 7;       // радиус поражения
+const GRENADE_MAX_DAMAGE = 100;
+const activeGrenades = []; // {mesh, vel, spawnTime, exploded}
+
+function throwGrenade() {
+  if (!player.alive || player.grenades <= 0) return;
+  player.grenades--;
+  updateGrenadeHUD();
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  dir.y += 0.28; // лёгкая дуга вверх
+  dir.normalize();
+
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+  origin.addScaledVector(dir, 0.4);
+
+  const geo = new THREE.SphereGeometry(0.09, 10, 10);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5c2e, roughness: 0.6 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(origin);
+  mesh.castShadow = true;
+  scene.add(mesh);
+
+  activeGrenades.push({
+    mesh,
+    vel: dir.clone().multiplyScalar(GRENADE_THROW_SPEED),
+    spawnTime: performance.now(),
+    exploded: false
+  });
+}
+
+function updateGrenades(dt) {
+  for (let i = activeGrenades.length - 1; i >= 0; i--) {
+    const g = activeGrenades[i];
+    if (g.exploded) continue;
+
+    g.vel.y -= GRENADE_GRAVITY * dt;
+    g.mesh.position.addScaledVector(g.vel, dt);
+
+    // Простое отражение от пола, чтобы граната не улетала под текстуры
+    if (g.mesh.position.y <= 0.15) {
+      g.mesh.position.y = 0.15;
+      g.vel.y *= -0.4;
+      g.vel.x *= 0.6;
+      g.vel.z *= 0.6;
+    }
+
+    const age = performance.now() - g.spawnTime;
+    if (age >= GRENADE_FUSE_TIME) {
+      explodeGrenade(g);
+    }
+  }
+}
+
+function explodeGrenade(g) {
+  g.exploded = true;
+  const pos = g.mesh.position.clone();
+  scene.remove(g.mesh);
+
+  // Визуальная вспышка взрыва
+  const flashGeo = new THREE.SphereGeometry(0.3, 12, 12);
+  const flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.9 });
+  const flashMesh = new THREE.Mesh(flashGeo, flashMat);
+  flashMesh.position.copy(pos);
+  scene.add(flashMesh);
+  const light = new THREE.PointLight(0xffaa33, 8, GRENADE_RADIUS * 2);
+  light.position.copy(pos);
+  scene.add(light);
+
+  let t = 0;
+  const growInterval = setInterval(() => {
+    t += 0.06;
+    const scale = 1 + t * 14;
+    flashMesh.scale.set(scale, scale, scale);
+    flashMat.opacity = Math.max(0, 0.9 - t * 1.4);
+    light.intensity = Math.max(0, 8 - t * 12);
+    if (t >= 0.65) {
+      clearInterval(growInterval);
+      scene.remove(flashMesh);
+      scene.remove(light);
+    }
+  }, 16);
+
+  activeGrenades.splice(activeGrenades.indexOf(g), 1);
+
+  // Урон себе (если рядом)
+  const selfDist = player.pos.distanceTo(pos);
+  if (selfDist < GRENADE_RADIUS && player.alive) {
+    const dmg = Math.round(GRENADE_MAX_DAMAGE * (1 - selfDist / GRENADE_RADIUS));
+    if (dmg > 0 && myId) socket.emit('hit', { targetId: myId, damage: dmg });
+  }
+
+  // Урон другим игрокам в радиусе (по известным клиенту позициям)
+  Object.values(otherPlayerMeshes).forEach(mesh => {
+    const worldPos = mesh.position.clone();
+    worldPos.y += 0.9;
+    const dist = worldPos.distanceTo(pos);
+    if (dist < GRENADE_RADIUS) {
+      const dmg = Math.round(GRENADE_MAX_DAMAGE * (1 - dist / GRENADE_RADIUS));
+      if (dmg > 0) socket.emit('hit', { targetId: mesh.userData.playerId, damage: dmg });
+    }
+  });
+}
+
+// ---- Подбираемые гранаты, случайно разбросанные по карте ----
+const grenadePickups = []; // {mesh, active}
+const GRENADE_PICKUP_COUNT = 6;
+const GRENADE_PICKUP_RESPAWN_DELAY = 14000;
+const MAP_BOUNDS = { training: 55, bazaar: 55, industrial: 55 };
+
+function spawnGrenadePickups(mapId) {
+  const bound = MAP_BOUNDS[mapId] || 55;
+  const geo = new THREE.OctahedronGeometry(0.22, 0);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8fae3a, roughness: 0.4, metalness: 0.3, emissive: 0x1c2a08, emissiveIntensity: 0.4 });
+
+  for (let i = 0; i < GRENADE_PICKUP_COUNT; i++) {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    scene.add(mesh);
+    const pickup = { mesh, active: true };
+    respawnPickupAt(pickup, bound);
+    grenadePickups.push(pickup);
+  }
+}
+
+function respawnPickupAt(pickup, bound) {
+  const x = (Math.random() - 0.5) * 2 * (bound - 8);
+  const z = (Math.random() - 0.5) * 2 * (bound - 8);
+  pickup.mesh.position.set(x, 1.0, z);
+  pickup.active = true;
+  pickup.mesh.visible = true;
+}
+
+function updateGrenadePickups(dt, bound) {
+  const now = performance.now();
+  grenadePickups.forEach(pickup => {
+    if (!pickup.active) return;
+    pickup.mesh.rotation.y += dt * 1.6;
+    pickup.mesh.position.y = 1.0 + Math.sin(now * 0.002 + pickup.mesh.id) * 0.12;
+
+    const dist = Math.hypot(player.pos.x - pickup.mesh.position.x, player.pos.z - pickup.mesh.position.z);
+    if (dist < 1.4 && player.alive && player.grenades < 2) {
+      pickup.active = false;
+      pickup.mesh.visible = false;
+      player.grenades = Math.min(2, player.grenades + 1);
+      updateGrenadeHUD();
+      setTimeout(() => respawnPickupAt(pickup, bound), GRENADE_PICKUP_RESPAWN_DELAY);
+    }
+  });
 }
 
 // ---------- Движение (WASD) + баннихоп физика ----------
@@ -691,7 +1277,14 @@ function getWishDir() {
   if (keys['KeyS']) wish.sub(forward);
   if (keys['KeyD']) wish.add(right);
   if (keys['KeyA']) wish.sub(right);
-  if (wish.lengthSq() > 0) wish.normalize();
+
+  // Виртуальный джойстик (мобильные устройства)
+  if (isTouchDevice) {
+    wish.addScaledVector(forward, touchMoveVector.y);
+    wish.addScaledVector(right, touchMoveVector.x);
+  }
+
+  if (wish.lengthSq() > 1) wish.normalize();
   return wish;
 }
 
@@ -777,13 +1370,18 @@ function resolveCollisions(nextPos) {
       }
       // Боковое столкновение — выталкивание
       if (feetY < b.max.y - 0.1 && headY > b.min.y) {
-        const dx = nextPos.x - c.mesh.position.x;
-        const dz = nextPos.z - c.mesh.position.z;
+        // ВАЖНО: используем мировой центр bounding box (b), а не c.mesh.position —
+        // для вложенных объектов (например, прилавков внутри группы) mesh.position
+        // хранит ЛОКАЛЬНЫЕ координаты относительно родителя, что раньше ломало отталкивание.
+        const centerX = (b.min.x + b.max.x) / 2;
+        const centerZ = (b.min.z + b.max.z) / 2;
+        const dx = nextPos.x - centerX;
+        const dz = nextPos.z - centerZ;
         if (Math.abs(dx) > Math.abs(dz)) {
-          nextPos.x = c.mesh.position.x + Math.sign(dx) * ((b.max.x - b.min.x) / 2 + r);
+          nextPos.x = centerX + Math.sign(dx || 1) * ((b.max.x - b.min.x) / 2 + r);
           player.vel.x = 0;
         } else {
-          nextPos.z = c.mesh.position.z + Math.sign(dz) * ((b.max.z - b.min.z) / 2 + r);
+          nextPos.z = centerZ + Math.sign(dz || 1) * ((b.max.z - b.min.z) / 2 + r);
           player.vel.z = 0;
         }
       }
@@ -822,6 +1420,9 @@ let myId = null;
 socket.on('init', (data) => {
   myId = data.id;
   buildMap(data.mapId || 'training');
+  updateAmmoHUD();
+  updateWeaponNameHUD();
+  updateGrenadeHUD();
   Object.values(data.players).forEach(p => {
     if (p.id !== myId) spawnRemotePlayer(p);
   });
@@ -916,7 +1517,22 @@ function updateHealthHUD() {
   document.getElementById('healthValue').textContent = Math.max(0, Math.round(player.health));
 }
 function updateAmmoHUD() {
-  document.getElementById('ammoValue').textContent = `${player.ammo} / ∞`;
+  const stats = WEAPON_STATS[currentWeapon];
+  if (stats.kind === 'melee') {
+    document.getElementById('ammoValue').textContent = '—';
+  } else {
+    document.getElementById('ammoValue').textContent = `${player.ammoByWeapon[currentWeapon]} / ∞`;
+  }
+}
+function updateWeaponNameHUD() {
+  const names = { ak47: 'AK-47', pistol: 'Пистолет', knife: 'Нож' };
+  document.getElementById('weaponNameValue').textContent = names[currentWeapon];
+  document.querySelectorAll('#weaponSlots .slot').forEach(el => {
+    el.classList.toggle('active', el.dataset.weapon === currentWeapon);
+  });
+}
+function updateGrenadeHUD() {
+  document.getElementById('grenadeValue').textContent = player.grenades;
 }
 function addKillfeed(killer, victim) {
   const feed = document.getElementById('killfeed');
@@ -951,12 +1567,14 @@ function animate() {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
 
-  if (pointerLocked && player.alive) {
+  if ((pointerLocked || touchControlsActive) && player.alive) {
     updateMovement(dt);
     if (mouseHeld) shoot();
   }
 
   updateRecoilRecovery(dt);
+  updateGrenades(dt);
+  updateGrenadePickups(dt, MAP_BOUNDS[activeMapId] || 55);
 
   // Камера: позиция игрока + смещение отдачи по pitch/yaw
   camera.position.set(player.pos.x, player.pos.y, player.pos.z);
